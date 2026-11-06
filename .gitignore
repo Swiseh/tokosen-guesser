@@ -1,2 +1,4 @@
 node_modules
 dist
+# Claude Code の個人用ローカル設定
+.claude/settings.local.json
