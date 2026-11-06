@@ -62,5 +62,8 @@ function thirdPartyLicenses(): Plugin {
 }
 
 export default defineConfig({
+  // GitHub Pages では https://ユーザー名.github.io/リポジトリ名/ に置かれるので、
+  // ビルド結果が相対パスで参照し合うようにする（リポジトリ名に依存しない）
+  base: './',
   plugins: [thirdPartyLicenses()],
 });
