@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>等高線Guessr（試作）</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <h1>等高線Guessr <span class="tag">試作</span></h1>
+      <label>山域
+        <select id="region"></select>
+      </label>
+      <button id="new-map">新しい地図</button>
+      <div class="tabs" role="tablist">
+        <button id="mode-free" class="tab active" role="tab">自由に見る</button>
+        <button id="mode-quiz" class="tab" role="tab">5問に挑戦</button>
+      </div>
+      <span id="status" class="status"></span>
+    </header>
+
+    <div class="settings">
+      <label>等高線間隔
+        <select id="interval">
+          <option value="10" selected>10 m</option>
+          <option value="20">20 m</option>
+          <option value="50">50 m</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="labels" checked /> 標高の数字</label>
+      <label><input type="checkbox" id="compass" checked /> コンパス</label>
+      <label><input type="checkbox" id="altimeter" checked /> 標高計</label>
+      <label>視程 <input type="range" id="visibility" min="2" max="30" step="1" value="8" /> <span id="visibility-val">8 km</span></label>
+      <label id="eye-wrap">目線の高さ <input type="range" id="eye" min="0" max="300" step="1" value="0" /> <span id="eye-val">1.7 m</span></label>
+      <span id="place" class="place"></span>
+    </div>
+
+    <main class="main">
+      <section class="panel map-panel">
+        <div id="map" class="map"></div>
+      </section>
+      <section class="panel view-panel">
+        <div id="view" class="view"></div>
+        <div class="hud">
+          <div id="hud-compass" class="hud-item"></div>
+          <div id="hud-altimeter" class="hud-item"></div>
+        </div>
+        <div id="quiz" class="quiz" hidden>
+          <div id="quiz-title" class="quiz-title"></div>
+          <div id="quiz-msg" class="quiz-msg"></div>
+          <div class="quiz-actions">
+            <button id="quiz-submit" disabled>この地点で決定</button>
+            <button id="quiz-next" hidden>次へ</button>
+            <button id="quiz-retry" hidden>同じ地図でもう一度</button>
+          </div>
+        </div>
+        <div id="loading" class="loading" hidden></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      出典：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院 地理院タイル</a>（標高タイル（基盤地図情報数値標高モデル））を加工して作成
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
