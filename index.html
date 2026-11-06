@@ -12,6 +12,11 @@
         <select id="region"></select>
       </label>
       <button id="new-map">新しい地図</button>
+      <label class="setcode">セットコード
+        <input id="setcode" type="text" size="20" spellcheck="false" autocomplete="off" />
+      </label>
+      <button id="load-code">読み込む</button>
+      <button id="copy-code">コピー</button>
       <div class="tabs" role="tablist">
         <button id="mode-free" class="tab active" role="tab">自由に見る</button>
         <button id="mode-quiz" class="tab" role="tab">5問に挑戦</button>
@@ -51,7 +56,8 @@
           <div class="quiz-actions">
             <button id="quiz-submit" disabled>この地点で決定</button>
             <button id="quiz-next" hidden>次へ</button>
-            <button id="quiz-retry" hidden>同じ地図でもう一度</button>
+            <button id="quiz-retry" hidden>同じ問題をもう一度</button>
+            <button id="quiz-newset" hidden>新しいセット</button>
           </div>
         </div>
         <div id="loading" class="loading" hidden></div>

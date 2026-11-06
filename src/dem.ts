@@ -36,7 +36,7 @@ export function pixelToLonLat(x: number, y: number, z: number) {
 }
 
 /** 標高PNGの1ピクセルを標高 [m] に変換。無効値（海・欠損）は NaN */
-function decodePixel(r: number, g: number, b: number): number {
+export function decodePixel(r: number, g: number, b: number): number {
   const v = (r << 16) | (g << 8) | b;
   if (v === 0x800000) return NaN;
   return (v < 0x800000 ? v : v - 0x1000000) * 0.01;

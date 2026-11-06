@@ -1,4 +1,9 @@
-/** 出題する山域のプリセット。中心から ±spread 度の範囲でランダムに地図の中心を選ぶ。 */
+import type { Rng } from './random';
+
+/**
+ * 出題する山域のプリセット。中心から ±spread 度の範囲でランダムに地図の中心を選ぶ。
+ * id はセットコードに含まれるので、変えると過去のコードが使えなくなる。
+ */
 export interface Region {
   id: string;
   name: string;
@@ -21,7 +26,11 @@ export const REGIONS: Region[] = [
   { id: 'kirishima', name: '霧島山', lat: 31.9, lon: 130.86, spread: 0.05 },
 ];
 
-export function randomCenter(region: Region, rand: () => number = Math.random) {
+export function findRegion(id: string): Region | undefined {
+  return REGIONS.find((r) => r.id === id);
+}
+
+export function randomCenter(region: Region, rand: Rng) {
   return {
     lat: region.lat + (rand() * 2 - 1) * region.spread,
     lon: region.lon + (rand() * 2 - 1) * region.spread,

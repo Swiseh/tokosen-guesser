@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { buildTerrainMesh, worldOrigin, type TerrainMeshData } from './mesh';
 import type { Heightmap } from './terrain';
-import { heightAt, sampleMeshHeight } from './terrain';
+import { sampleMeshHeight } from './terrain';
 
 export interface ViewSettings {
   /** 目線の高さ（地面から） [m] */
@@ -165,14 +166,19 @@ export class Viewer3D {
     this.updateCamera();
   }
 
-  setTerrain(hm: Heightmap) {
+  /** mesh は Worker で作ったものを渡す。省略時はここで作る */
+  setTerrain(hm: Heightmap, mesh: TerrainMeshData = buildTerrainMesh(hm)) {
     this.hm = hm;
-    this.origin = { col: hm.mapRect.col0 + hm.mapRect.size / 2, row: hm.mapRect.row0 + hm.mapRect.size / 2 };
+    this.origin = worldOrigin(hm);
     if (this.terrain) {
       this.scene.remove(this.terrain);
       this.terrain.geometry.dispose();
     }
-    this.terrain = new THREE.Mesh(buildTerrainGeometry(hm, this.origin), this.material);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3));
+    g.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+    this.terrain = new THREE.Mesh(g, this.material);
     this.terrain.frustumCulled = false;
     this.scene.add(this.terrain);
     this.dirty = true;
@@ -251,45 +257,3 @@ export class Viewer3D {
   }
 }
 
-/** 標高データ全体を1枚のメッシュにする。法線は標高の中心差分で計算 */
-function buildTerrainGeometry(hm: Heightmap, origin: { col: number; row: number }) {
-  const { width: W, height: H, metersPerPixel: mpp } = hm;
-  const positions = new Float32Array(W * H * 3);
-  const normals = new Float32Array(W * H * 3);
-  for (let r = 0; r < H; r++) {
-    for (let c = 0; c < W; c++) {
-      const i = r * W + c;
-      positions[i * 3] = (c - origin.col) * mpp;
-      positions[i * 3 + 1] = hm.data[i];
-      positions[i * 3 + 2] = (r - origin.row) * mpp;
-      const dx = (heightAt(hm, c + 1, r) - heightAt(hm, c - 1, r)) / (2 * mpp);
-      const dz = (heightAt(hm, c, r + 1) - heightAt(hm, c, r - 1)) / (2 * mpp);
-      const len = Math.hypot(dx, 1, dz);
-      normals[i * 3] = -dx / len;
-      normals[i * 3 + 1] = 1 / len;
-      normals[i * 3 + 2] = -dz / len;
-    }
-  }
-  // 四角形 a(c,r) b(c+1,r) c(c,r+1) d(c+1,r+1) を対角線 b-c で分割（sampleMeshHeight と一致させる）
-  const index = new Uint32Array((W - 1) * (H - 1) * 6);
-  let k = 0;
-  for (let r = 0; r < H - 1; r++) {
-    for (let c = 0; c < W - 1; c++) {
-      const a = r * W + c;
-      const b = a + 1;
-      const cc = a + W;
-      const d = cc + 1;
-      index[k++] = a;
-      index[k++] = cc;
-      index[k++] = b;
-      index[k++] = b;
-      index[k++] = cc;
-      index[k++] = d;
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-  g.setIndex(new THREE.BufferAttribute(index, 1));
-  return g;
-}

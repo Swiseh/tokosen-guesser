@@ -1,4 +1,5 @@
 import type { Heightmap } from './terrain';
+import type { Rng } from './random';
 import { sampleMeshHeight } from './terrain';
 
 export interface Spot {
@@ -21,11 +22,12 @@ export function visibilityScore(hm: Heightmap, col: number, row: number, eyeHeig
  * 出題時の最初の向き。見通しの良い方向（上位 1/4）からランダムに選ぶ。
  * 目の前が斜面で何も見えない、という出だしを避けるため。
  */
-export function initialYaw(hm: Heightmap, col: number, row: number, rand: () => number = Math.random): number {
+export function initialYaw(hm: Heightmap, col: number, row: number, rand: Rng): number {
   const perRay = rayVisibility(hm, col, row);
   const order = perRay.map((v, k) => ({ v, k })).sort((a, b) => b.v - a.v);
   const pick = order[Math.floor(rand() * Math.ceil(order.length / 4))];
-  return ((pick.k + rand() - 0.5) / perRay.length) * Math.PI * 2;
+  const yaw = ((pick.k + rand() - 0.5) / perRay.length) * Math.PI * 2;
+  return (yaw + Math.PI * 2) % (Math.PI * 2);
 }
 
 /** 方向ごとの「見える地面の割合」（北=0 から時計回りに 64 方向） */
@@ -63,7 +65,7 @@ function rayVisibility(hm: Heightmap, col: number, row: number, eyeHeight = 1.7,
 /**
  * 出題地点を n 個選ぶ。ランダムな候補のうち見通しの良い上位半分から、互いに離れた地点を選ぶ。
  */
-export function pickSpots(hm: Heightmap, n: number, rand: () => number = Math.random): Spot[] {
+export function pickSpots(hm: Heightmap, n: number, rand: Rng): Spot[] {
   const { col0, row0, size } = hm.mapRect;
   const inset = size * 0.06; // 地図の端ぎりぎりは避ける
   const candidates: Spot[] = [];

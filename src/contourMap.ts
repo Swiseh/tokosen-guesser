@@ -1,13 +1,6 @@
-import { contours } from 'd3-contour';
+import type { ContourData } from './contours';
 import type { Heightmap } from './terrain';
 import { heightAt } from './terrain';
-
-export interface MapSettings {
-  /** 主曲線の間隔 [m] */
-  interval: number;
-  /** 計曲線に標高の数値を書くか */
-  labels: boolean;
-}
 
 export interface Marker {
   col: number;
@@ -25,18 +18,19 @@ export interface MapLine {
   to: { col: number; row: number };
 }
 
-const PAD = 2; // 等高線の計算範囲を表示範囲より少し広げ、端に閉じた線が出ないようにする
 const COLOR_BG = '#fbf8ef';
 const COLOR_CONTOUR = '#b0703a';
 
 /**
- * 等高線図。等高線はオフスクリーンに一度だけ描き、マーカー類は毎回その上に重ねる。
+ * 等高線図の描画。等高線の計算は contours.ts（Worker）で行い、ここでは描くだけ。
+ * 等高線はオフスクリーンに一度だけ描き、マーカー類は毎回その上に重ねる。
  */
 export class ContourMap {
   readonly canvas: HTMLCanvasElement;
   private base = document.createElement('canvas');
   private hm: Heightmap | null = null;
-  private settings: MapSettings = { interval: 10, labels: true };
+  private contours: ContourData | null = null;
+  private labels = true;
   private markers: Marker[] = [];
   private lines: MapLine[] = [];
   private cssSize = 0;
@@ -60,14 +54,21 @@ export class ContourMap {
     });
   }
 
-  setTerrain(hm: Heightmap) {
+  setTerrain(hm: Heightmap, contours: ContourData) {
     this.hm = hm;
+    this.contours = contours;
     this.renderBase();
     this.draw();
   }
 
-  setSettings(s: Partial<MapSettings>) {
-    this.settings = { ...this.settings, ...s };
+  setContours(contours: ContourData) {
+    this.contours = contours;
+    this.renderBase();
+    this.draw();
+  }
+
+  setLabels(on: boolean) {
+    this.labels = on;
     this.renderBase();
     this.draw();
   }
@@ -105,41 +106,17 @@ export class ContourMap {
     return { col: col0 + (e.clientX - rect.left) * s, row: row0 + (e.clientY - rect.top) * s };
   }
 
-  /** 等高線をオフスクリーンキャンバスに描く（地形か設定が変わったときだけ） */
+  /** 等高線をオフスクリーンキャンバスに描く（地形・等高線・設定が変わったときだけ） */
   private renderBase() {
-    const hm = this.hm;
-    if (!hm || this.cssSize === 0) return;
+    const data = this.contours;
+    if (!data || this.cssSize === 0) return;
     const W = this.canvas.width;
     this.base.width = this.base.height = W;
     const ctx = this.base.getContext('2d')!;
     ctx.fillStyle = COLOR_BG;
     ctx.fillRect(0, 0, W, W);
 
-    // 表示範囲 + PAD のサブグリッドを切り出し、軽くぼかしてギザギザを抑える
-    const { col0, row0, size } = hm.mapRect;
-    const gx0 = col0 - PAD;
-    const gy0 = row0 - PAD;
-    const n = size + 1 + 2 * PAD;
-    const raw = new Float64Array(n * n);
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) raw[y * n + x] = heightAt(hm, gx0 + x, gy0 + y);
-    const values = blur3(raw, n);
-
-    let min = Infinity;
-    let max = -Infinity;
-    for (const v of values) {
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    const iv = this.settings.interval;
-    const indexEvery = iv * 5; // 計曲線は主曲線5本ごと
-    const thresholds: number[] = [];
-    for (let t = Math.ceil(min / iv) * iv; t <= max; t += iv) thresholds.push(t);
-
-    const polys = contours().size([n, n]).smooth(true).thresholds(thresholds)(values as unknown as number[]);
-
-    // グリッド座標 → デバイスピクセル。d3-contour ではグリッド点 i が座標 i+0.5 に対応する
-    const scale = W / size;
-    const off = PAD + 0.5;
+    const scale = W / data.size;
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, W, W);
@@ -147,36 +124,34 @@ export class ContourMap {
     ctx.strokeStyle = COLOR_CONTOUR;
     ctx.lineJoin = 'round';
     const labelCandidates: { x: number; y: number; angle: number; value: number }[] = [];
-    for (const p of polys) {
-      const isIndex = Math.abs(p.value / indexEvery - Math.round(p.value / indexEvery)) < 1e-6;
+    for (const level of data.levels) {
+      const { coords, ringStarts, isIndex } = level;
       ctx.lineWidth = (isIndex ? 1.6 : 0.7) * this.dpr;
       ctx.beginPath();
-      for (const polygon of p.coordinates) {
-        for (const ring of polygon) {
-          for (let i = 0; i < ring.length; i++) {
-            const x = (ring[i][0] - off) * scale;
-            const y = (ring[i][1] - off) * scale;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-          }
-          if (isIndex && this.settings.labels && ring.length > 60) {
-            const m = Math.floor(ring.length / 2);
-            const a = ring[m - 2];
-            const b = ring[m + 2];
-            labelCandidates.push({
-              x: (ring[m][0] - off) * scale,
-              y: (ring[m][1] - off) * scale,
-              angle: Math.atan2(b[1] - a[1], b[0] - a[0]),
-              value: p.value,
-            });
-          }
+      for (let r = 0; r < ringStarts.length - 1; r++) {
+        const s = ringStarts[r];
+        const e = ringStarts[r + 1];
+        for (let i = s; i < e; i++) {
+          const x = coords[i * 2] * scale;
+          const y = coords[i * 2 + 1] * scale;
+          if (i === s) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        if (isIndex && this.labels && e - s > 60) {
+          const m = s + Math.floor((e - s) / 2);
+          labelCandidates.push({
+            x: coords[m * 2] * scale,
+            y: coords[m * 2 + 1] * scale,
+            angle: Math.atan2(coords[(m + 2) * 2 + 1] - coords[(m - 2) * 2 + 1], coords[(m + 2) * 2] - coords[(m - 2) * 2]),
+            value: level.value,
+          });
         }
       }
       ctx.stroke();
     }
 
     // 計曲線の標高ラベル（近すぎるものは間引く）
-    if (this.settings.labels) {
+    if (this.labels) {
       const placed: { x: number; y: number }[] = [];
       const minDist = 90 * this.dpr;
       const margin = 20 * this.dpr;
@@ -210,7 +185,7 @@ export class ContourMap {
     const W = this.canvas.width;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, W, W);
-    if (!this.hm) return;
+    if (!this.hm || !this.contours) return;
     ctx.drawImage(this.base, 0, 0);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
@@ -314,20 +289,4 @@ export class ContourMap {
     ctx.textBaseline = 'top';
     ctx.fillText('N', nx, ny + 6);
   }
-}
-
-/** 3x3 の重み付き平滑化（端はそのまま） */
-function blur3(src: Float64Array, n: number): Float64Array {
-  const out = new Float64Array(src);
-  for (let y = 1; y < n - 1; y++) {
-    for (let x = 1; x < n - 1; x++) {
-      const i = y * n + x;
-      out[i] =
-        (4 * src[i] +
-          2 * (src[i - 1] + src[i + 1] + src[i - n] + src[i + n]) +
-          (src[i - n - 1] + src[i - n + 1] + src[i + n - 1] + src[i + n + 1])) /
-        16;
-    }
-  }
-  return out;
 }
