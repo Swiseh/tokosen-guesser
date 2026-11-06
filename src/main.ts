@@ -1,4 +1,5 @@
 import './style.css';
+import { Compass, type CompassLabels } from './compass';
 import { ContourMap, type MapLine, type Marker } from './contourMap';
 import { QuizSession } from './game';
 import { findLevel, LEVELS, type Level } from './levels';
@@ -28,7 +29,7 @@ const ui = {
   setCode: $<HTMLInputElement>('setcode'),
   place: $('place'),
   loading: $('loading'),
-  hudCompass: $('hud-compass'),
+  compassLabels: $<HTMLSelectElement>('compass-labels'),
   hudAltimeter: $('hud-altimeter'),
   sbTitle: $('sb-title'),
   sbRounds: $('sb-rounds'),
@@ -60,6 +61,7 @@ for (const r of REGIONS) ui.region.add(new Option(r.name, r.id));
 const service = new TerrainService();
 const map = new ContourMap($('map'));
 const viewer = new Viewer3D($('view'));
+const compass = new Compass($('compass-slot'));
 
 type Mode = 'free' | 'quiz';
 let mode: Mode = 'quiz';
@@ -166,6 +168,7 @@ function showQuestion() {
   const q = session.current;
   viewer.setViewpoint(q.col, q.row, q.yaw);
   viewer.resetZoom();
+  yawBeforeNorth = null;
   ui.result.hidden = true;
   setResultMode(false);
   map.resetView();
@@ -232,8 +235,14 @@ function refreshAll() {
 
 /** 3Dビューの操作制限。レベルの制限がかかるのは出題中（回答前）だけ */
 function applyControls() {
+  const c = currentControls();
+  viewer.setControls(c);
+  compass.setClickable(c.pan);
+}
+
+function currentControls() {
   const restricted = mode === 'quiz' && session?.phase === 'guessing';
-  viewer.setControls(restricted ? { pan: level.canPan, zoom: level.canZoom } : { pan: true, zoom: true });
+  return restricted ? { pan: level.canPan, zoom: level.canZoom } : { pan: true, zoom: true };
 }
 
 function updateOverlay() {
@@ -274,12 +283,8 @@ function updateHud(view: { col: number; row: number; yaw: number }) {
   const hideable = mode === 'quiz' && session?.phase === 'guessing';
 
   const showCompass = !hideable || ui.compass.checked;
-  ui.hudCompass.hidden = !showCompass;
-  if (showCompass) {
-    const deg = Math.round((view.yaw * 180) / Math.PI) % 360;
-    const dirs = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'];
-    ui.hudCompass.textContent = `${dirs[Math.round(deg / 45) % 8]}　${String(deg).padStart(3, '0')}°`;
-  }
+  compass.el.hidden = !showCompass;
+  if (showCompass) compass.setYaw(view.yaw);
 
   const showAltimeter = !!set && (!hideable || level.altimeter);
   ui.hudAltimeter.hidden = !showAltimeter;
@@ -320,6 +325,26 @@ function updateGuessButton() {
   ui.guessBtn.disabled = !session!.guess;
   ui.guessBtn.textContent = session!.guess ? 'この地点で決定（Space）' : '地図をクリックして地点を選ぶ';
 }
+
+// ---------- 北を向く ----------
+
+/** 北を向く直前の向き。もう一度押すとここへ戻る */
+let yawBeforeNorth: number | null = null;
+
+/** 北を向く。すでに北を向いていれば、北を向く前の向きに戻る */
+function toggleNorth() {
+  if (!currentControls().pan) return;
+  const facingNorth = Math.min(viewer.yaw, Math.PI * 2 - viewer.yaw) < (1 * Math.PI) / 180;
+  if (facingNorth && yawBeforeNorth !== null) {
+    viewer.turnTo(yawBeforeNorth);
+    yawBeforeNorth = null;
+  } else {
+    yawBeforeNorth = viewer.yaw;
+    viewer.turnTo(0);
+  }
+}
+
+compass.onClick = toggleNorth;
 
 // ---------- 地図ウィンドウ ----------
 
@@ -468,6 +493,12 @@ ui.quizNext.addEventListener('click', nextQuestion);
 ui.quizRetry.addEventListener('click', startQuiz);
 ui.quizNewSet.addEventListener('click', () => newSet());
 ui.compass.addEventListener('change', updateOverlay);
+ui.compassLabels.value = loadPref('compassLabels') === 'ja' ? 'ja' : 'en';
+compass.setLabels(ui.compassLabels.value as CompassLabels);
+ui.compassLabels.addEventListener('change', () => {
+  compass.setLabels(ui.compassLabels.value as CompassLabels);
+  savePref('compassLabels', ui.compassLabels.value);
+});
 
 ui.interval.addEventListener('change', refreshContours);
 $<HTMLInputElement>('labels').addEventListener('change', (e) => map.setLabels((e.target as HTMLInputElement).checked));
@@ -501,6 +532,10 @@ window.addEventListener('keydown', (e) => {
   }
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.key === 'n' || e.key === 'N') {
+    toggleNorth();
+    return;
+  }
   if (e.key !== ' ' && e.key !== 'Enter') return;
   if (!session || mode !== 'quiz') return;
   if (session.phase === 'guessing' && session.guess) {

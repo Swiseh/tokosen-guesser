@@ -11,7 +11,7 @@
 
     <!-- 上部中央：コンパス・標高計 -->
     <div class="hud">
-      <div id="hud-compass" class="hud-item"></div>
+      <div id="compass-slot" class="compass-slot"></div>
       <div id="hud-altimeter" class="hud-item"></div>
     </div>
 
@@ -60,6 +60,12 @@
           <button id="change-level">変更</button>
         </div>
         <label class="check"><input type="checkbox" id="compass" checked /> コンパス</label>
+        <label class="row">方位の表記
+          <select id="compass-labels">
+            <option value="en">N / NE / E</option>
+            <option value="ja">北 / 北東 / 東</option>
+          </select>
+        </label>
         <label class="row">視程 <span id="visibility-val">8 km</span>
           <input type="range" id="visibility" min="2" max="30" step="1" value="8" />
         </label>

@@ -159,6 +159,31 @@ export class Viewer3D {
     this.renderer.domElement.classList.toggle('locked', !c.pan);
   }
 
+  private turnAnim = 0;
+
+  /**
+   * 指定した向きへなめらかに回る（近い方向に回る）。見回しが禁止されているときは何もしない。
+   * 途中でドラッグされたら中断する。
+   */
+  turnTo(targetYaw: number, durationMs = 450) {
+    if (!this.controls.pan) return;
+    cancelAnimationFrame(this.turnAnim);
+    const from = this.yaw;
+    const TAU = Math.PI * 2;
+    // -π〜π の範囲の差にして、短い方向へ回る
+    const delta = ((((targetYaw - from) % TAU) + TAU + Math.PI) % TAU) - Math.PI;
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const e = 1 - Math.pow(1 - t, 3); // ease-out
+      this.yaw = (((from + delta * e) % TAU) + TAU) % TAU;
+      this.pitch *= 1 - e * 0.2; // ついでに水平に近づける
+      this.updateCamera();
+      if (t < 1) this.turnAnim = requestAnimationFrame(step);
+    };
+    this.turnAnim = requestAnimationFrame(step);
+  }
+
   /** 画角を初期値に戻す */
   resetZoom() {
     this.camera.fov = DEFAULT_FOV;
@@ -201,6 +226,7 @@ export class Viewer3D {
   }
 
   setViewpoint(col: number, row: number, yaw?: number) {
+    cancelAnimationFrame(this.turnAnim);
     this.pos = { col, row };
     if (yaw !== undefined) this.yaw = yaw;
     this.pitch = 0;
@@ -242,6 +268,7 @@ export class Viewer3D {
     let lastY = 0;
     el.addEventListener('pointerdown', (e) => {
       if (!this.controls.pan) return;
+      cancelAnimationFrame(this.turnAnim);
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;

@@ -69,9 +69,53 @@ select option { color: #000; }
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   pointer-events: none;
   z-index: 5;
+}
+
+/* 帯状コンパス */
+.compass-slot { pointer-events: auto; }
+.compass {
+  position: relative;
+  /* 右上のスコアボードに重ならない幅にする */
+  width: clamp(200px, calc(100vw - 720px), 380px);
+  height: 30px;
+  overflow: hidden;
+  border-radius: 15px;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  /* 両端をぼかして、帯が流れていく感じを出す */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+}
+.compass.disabled { cursor: default; }
+.compass-tape { position: absolute; top: 0; left: 0; will-change: transform; }
+.compass-tape svg { display: block; }
+.compass-tape line { stroke: rgba(244, 237, 224, 0.55); stroke-width: 1.5; }
+.compass-tape text {
+  fill: var(--panel-text);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: system-ui, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+}
+.compass-tape .cardinal { font-size: 15px; font-weight: 700; }
+.compass-tape .north { font-size: 15px; font-weight: 800; fill: #ff7a59; }
+.compass-tape .intercardinal { font-size: 11px; font-weight: 600; fill: var(--panel-muted); }
+.compass-marker {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--accent-strong);
 }
 .hud-item {
   padding: 3px 14px;
