@@ -50,14 +50,16 @@
         <h2>ヒント・表示</h2>
         <label class="row">等高線の間隔
           <select id="interval">
-            <option value="10" selected>10 m</option>
-            <option value="20">20 m</option>
+            <option value="10">10 m</option>
+            <option value="20" selected>20 m</option>
             <option value="50">50 m</option>
           </select>
         </label>
         <label class="check"><input type="checkbox" id="labels" checked /> 等高線に標高の数字</label>
+        <div class="row">レベル <b id="level-name"></b>
+          <button id="change-level">変更</button>
+        </div>
         <label class="check"><input type="checkbox" id="compass" checked /> コンパス</label>
-        <label class="check"><input type="checkbox" id="altimeter" checked /> 標高計</label>
         <label class="row">視程 <span id="visibility-val">8 km</span>
           <input type="range" id="visibility" min="2" max="30" step="1" value="8" />
         </label>
@@ -115,6 +117,16 @@
         <button id="quiz-newset" class="primary">新しいセット</button>
       </div>
       <p id="result-place" class="place"></p>
+    </div>
+
+    <!-- 起動時のレベル選択 -->
+    <div id="start" class="start">
+      <div class="start-card panel">
+        <h1 class="start-title">等高線Guessr</h1>
+        <p class="start-lead">3Dの景色を見て、等高線だけの地図の上で現在地を当てる</p>
+        <div id="levels" class="levels"></div>
+        <p id="start-status" class="start-status"></p>
+      </div>
     </div>
 
     <div id="loading" class="loading" hidden></div>

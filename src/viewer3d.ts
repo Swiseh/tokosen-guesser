@@ -10,6 +10,8 @@ export interface ViewSettings {
   visibility: number;
 }
 
+/** 垂直画角の初期値 [度] */
+const DEFAULT_FOV = 75;
 const SKY_TOP = new THREE.Color('#5d8ccc');
 const SKY_HORIZON = new THREE.Color('#c9d8e6');
 
@@ -90,7 +92,8 @@ const skyFrag = /* glsl */ `
 export class Viewer3D {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(75, 1, 1, 60000);
+  readonly camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 1, 60000);
+  private controls = { pan: true, zoom: true };
   private terrain: THREE.Mesh | null = null;
   private sky: THREE.Mesh;
   private material: THREE.ShaderMaterial;
@@ -148,6 +151,19 @@ export class Viewer3D {
       requestAnimationFrame(loop);
     };
     loop();
+  }
+
+  /** 見回し（ドラッグ）と拡大・縮小（ホイール）を許可するか。NMPZ では出題中どちらも禁止 */
+  setControls(c: { pan: boolean; zoom: boolean }) {
+    this.controls = c;
+    this.renderer.domElement.classList.toggle('locked', !c.pan);
+  }
+
+  /** 画角を初期値に戻す */
+  resetZoom() {
+    this.camera.fov = DEFAULT_FOV;
+    this.camera.updateProjectionMatrix();
+    this.updateCamera();
   }
 
   /** 水平画角 [rad] */
@@ -225,17 +241,19 @@ export class Viewer3D {
     let lastX = 0;
     let lastY = 0;
     el.addEventListener('pointerdown', (e) => {
+      if (!this.controls.pan) return;
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
       el.setPointerCapture(e.pointerId);
     });
     el.addEventListener('pointerup', (e) => {
+      if (!dragging) return;
       dragging = false;
       el.releasePointerCapture(e.pointerId);
     });
     el.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
+      if (!dragging || !this.controls.pan) return;
       // 画角に比例した感度（ズーム時に回りすぎない）
       const k = THREE.MathUtils.degToRad(this.camera.fov) / el.clientHeight;
       this.yaw = (this.yaw - (e.clientX - lastX) * k + Math.PI * 4) % (Math.PI * 2);
@@ -248,6 +266,7 @@ export class Viewer3D {
       'wheel',
       (e) => {
         e.preventDefault();
+        if (!this.controls.zoom) return;
         this.camera.fov = THREE.MathUtils.clamp(this.camera.fov * Math.exp(e.deltaY * 0.001), 15, 90);
         this.camera.updateProjectionMatrix();
         this.updateCamera();

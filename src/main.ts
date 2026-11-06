@@ -1,6 +1,7 @@
 import './style.css';
 import { ContourMap, type MapLine, type Marker } from './contourMap';
 import { QuizSession } from './game';
+import { findLevel, LEVELS, type Level } from './levels';
 import type { PreparedSet } from './prepare';
 import { newSeed } from './random';
 import { REGIONS } from './regions';
@@ -46,7 +47,10 @@ const ui = {
   quizRetry: $<HTMLButtonElement>('quiz-retry'),
   quizNewSet: $<HTMLButtonElement>('quiz-newset'),
   compass: $<HTMLInputElement>('compass'),
-  altimeter: $<HTMLInputElement>('altimeter'),
+  levelName: $('level-name'),
+  start: $('start'),
+  levels: $('levels'),
+  startStatus: $('start-status'),
   interval: $<HTMLSelectElement>('interval'),
   eyeWrap: $('eye-wrap'),
 };
@@ -61,6 +65,7 @@ type Mode = 'free' | 'quiz';
 let mode: Mode = 'quiz';
 let set: PreparedSet | null = null;
 let session: QuizSession | null = null;
+let level: Level = findLevel(loadPref('level')) ?? LEVELS[0];
 
 // ---------- セットの読み込み ----------
 
@@ -70,12 +75,17 @@ async function loadSet(spec: SetSpec) {
   ui.setCode.value = code;
   ui.setCode.classList.remove('invalid');
   history.replaceState(null, '', `#${code}`);
-  ui.loading.hidden = false;
-  ui.loading.textContent = '標高データを読み込み中…';
+  // レベル選択画面が開いている間は、その下で読み込みを進めて進み具合だけ表示する
+  const setProgress = (text: string) => {
+    ui.loading.textContent = text;
+    ui.startStatus.textContent = text;
+  };
+  ui.loading.hidden = !ui.start.hidden;
+  setProgress('標高データを読み込み中…');
   try {
     const s = await service.prepare(
       { spec, mapSizeMeters: MAP_SIZE_M, marginMeters: MARGIN_M, questions: QUESTIONS, interval: currentInterval() },
-      (d, n) => (ui.loading.textContent = d < n ? `標高データを読み込み中… ${d} / ${n} タイル` : '地形を計算中…'),
+      (d, n) => setProgress(d < n ? `標高データを読み込み中… ${d} / ${n} タイル` : '地形を計算中…'),
     );
     set = s;
     map.setTerrain(s.hm, s.contours);
@@ -85,10 +95,11 @@ async function loadSet(spec: SetSpec) {
     if (mode === 'quiz') startQuiz();
     else enterFree();
     ui.loading.hidden = true;
+    ui.startStatus.textContent = `準備できました（${s.hm.label}）`;
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
     console.error(e);
-    ui.loading.textContent = `読み込みに失敗しました：${(e as Error).message}`;
+    setProgress(`読み込みに失敗しました：${(e as Error).message}`);
   }
 }
 
@@ -154,6 +165,7 @@ function showQuestion() {
   if (!session) return;
   const q = session.current;
   viewer.setViewpoint(q.col, q.row, q.yaw);
+  viewer.resetZoom();
   ui.result.hidden = true;
   setResultMode(false);
   map.resetView();
@@ -208,12 +220,20 @@ function formatDist(m: number) {
 // ---------- 表示の更新 ----------
 
 function refreshAll() {
+  applyControls();
   updateOverlay();
   updateScoreboard();
   updateGuessButton();
   updatePlace();
   $('mode-free').classList.toggle('active', mode === 'free');
   $('mode-quiz').classList.toggle('active', mode === 'quiz');
+  ui.levelName.textContent = level.name;
+}
+
+/** 3Dビューの操作制限。レベルの制限がかかるのは出題中（回答前）だけ */
+function applyControls() {
+  const restricted = mode === 'quiz' && session?.phase === 'guessing';
+  viewer.setControls(restricted ? { pan: level.canPan, zoom: level.canZoom } : { pan: true, zoom: true });
 }
 
 function updateOverlay() {
@@ -261,7 +281,7 @@ function updateHud(view: { col: number; row: number; yaw: number }) {
     ui.hudCompass.textContent = `${dirs[Math.round(deg / 45) % 8]}　${String(deg).padStart(3, '0')}°`;
   }
 
-  const showAltimeter = !!set && (!hideable || ui.altimeter.checked);
+  const showAltimeter = !!set && (!hideable || level.altimeter);
   ui.hudAltimeter.hidden = !showAltimeter;
   if (showAltimeter) {
     // 足元の地面の標高（目線の高さは含めない）
@@ -270,7 +290,7 @@ function updateHud(view: { col: number; row: number; yaw: number }) {
 }
 
 function updateScoreboard() {
-  ui.sbTitle.textContent = set ? (mode === 'free' ? `${set.hm.label}（探索）` : set.hm.label) : '';
+  ui.sbTitle.textContent = set ? `${set.hm.label}　·　${mode === 'free' ? '探索' : level.name}` : '';
   const quiz = mode === 'quiz' && session;
   ui.sbRounds.hidden = ui.sbTotalWrap.hidden = !quiz;
   if (!quiz) return;
@@ -310,8 +330,8 @@ let widgetLeaveTimer = 0;
 
 function loadWidgetPrefs(): { size: number; pinned: boolean; side: 'left' | 'right' } {
   const fallback = { size: 1, pinned: false, side: 'left' as const };
+  const raw = loadPref('mapWidget');
   try {
-    const raw = localStorage.getItem('mapWidget');
     return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
   } catch {
     return fallback;
@@ -319,11 +339,7 @@ function loadWidgetPrefs(): { size: number; pinned: boolean; side: 'left' | 'rig
 }
 
 function saveWidgetPrefs() {
-  try {
-    localStorage.setItem('mapWidget', JSON.stringify(widgetPrefs));
-  } catch {
-    // 保存できない環境（プライベートモードなど）では何もしない
-  }
+  savePref('mapWidget', JSON.stringify(widgetPrefs));
 }
 
 function applyWidget() {
@@ -452,7 +468,6 @@ ui.quizNext.addEventListener('click', nextQuestion);
 ui.quizRetry.addEventListener('click', startQuiz);
 ui.quizNewSet.addEventListener('click', () => newSet());
 ui.compass.addEventListener('change', updateOverlay);
-ui.altimeter.addEventListener('change', updateOverlay);
 
 ui.interval.addEventListener('change', refreshContours);
 $<HTMLInputElement>('labels').addEventListener('change', (e) => map.setLabels((e.target as HTMLInputElement).checked));
@@ -470,6 +485,16 @@ $<HTMLInputElement>('eye').addEventListener('input', (e) => {
 
 // キーボード：Space / Enter で決定・次へ、Esc でメニューを閉じる
 window.addEventListener('keydown', (e) => {
+  if (!ui.start.hidden) {
+    // レベル選択画面：1〜3 キーで選ぶ。ゲーム中にメニューから開いた場合は Esc で戻る
+    if (e.key === 'Escape' && session) {
+      ui.start.hidden = true;
+      return;
+    }
+    const l = LEVELS[Number(e.key) - 1];
+    if (l) chooseLevel(l);
+    return;
+  }
   if (e.key === 'Escape') {
     closeMenu();
     return;
@@ -487,6 +512,64 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// ---------- レベル選択 ----------
+
+function renderLevels() {
+  ui.levels.replaceChildren(
+    ...LEVELS.map((l, i) => {
+      const b = document.createElement('button');
+      b.className = 'level';
+      if (l.id === level.id) b.classList.add('last');
+      const tag = (text: string, on: boolean) => `<span class="level-tag${on ? '' : ' off'}">${text}</span>`;
+      b.innerHTML = `
+        <span class="level-head"><span class="level-name">${l.name}</span><span class="level-key">${i + 1}</span></span>
+        <span class="level-desc">${l.description}</span>
+        <span class="level-tags">${tag('見回し', l.canPan)}${tag('ズーム', l.canZoom)}${tag('標高計', l.altimeter)}</span>`;
+      b.addEventListener('click', () => chooseLevel(l));
+      return b;
+    }),
+  );
+}
+
+function openStart() {
+  closeMenu();
+  renderLevels();
+  ui.start.hidden = false;
+}
+
+/** レベルを決めて出題を始める（地形の読み込み中なら、終わり次第始まる） */
+function chooseLevel(l: Level) {
+  level = l;
+  savePref('level', l.id);
+  ui.start.hidden = true;
+  if (!set) {
+    ui.loading.hidden = false;
+    return;
+  }
+  startQuiz();
+}
+
+$('change-level').addEventListener('click', openStart);
+
+// ---------- 閲覧者ごとの設定の保存（保存できない環境では何もしない） ----------
+
+function loadPref(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function savePref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // プライベートモードなど
+  }
+}
+
 applyWidget();
+renderLevels();
 // URL の # にセットコードがあればそれを、なければ新しいセットを読み込む
 if (!loadFromCode(decodeURIComponent(location.hash.slice(1)))) newSet(REGIONS[0].id);
