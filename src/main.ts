@@ -69,22 +69,21 @@ let mode: Mode = 'quiz';
 let set: PreparedSet | null = null;
 let session: QuizSession | null = null;
 let level: Level = findLevel(loadPref('level')) ?? LEVELS[0];
+/** レベル選択画面で選んでいる地域 */
+let selectedRegion = REGIONS[0].id;
+/** 起動時の URL にあったセットコード。スタートするまで読み込まない */
+let pendingSpec: SetSpec | null = null;
 
 // ---------- セットの読み込み ----------
 
 async function loadSet(spec: SetSpec) {
   const code = formatSetCode(spec);
-  ui.region.value = spec.regionId;
-  renderRegions();
+  ui.region.value = selectedRegion = spec.regionId;
   ui.setCode.value = code;
   ui.setCode.classList.remove('invalid');
   history.replaceState(null, '', `#${code}`);
-  // レベル選択画面が開いている間は、その下で読み込みを進めて進み具合だけ表示する
-  const setProgress = (text: string) => {
-    ui.loading.textContent = text;
-    ui.startStatus.textContent = text;
-  };
-  ui.loading.hidden = !ui.start.hidden;
+  const setProgress = (text: string) => (ui.loading.textContent = text);
+  ui.loading.hidden = false;
   setProgress('標高データを読み込み中…');
   try {
     const s = await service.prepare(
@@ -99,7 +98,6 @@ async function loadSet(spec: SetSpec) {
     if (mode === 'quiz') startQuiz();
     else enterFree();
     ui.loading.hidden = true;
-    ui.startStatus.textContent = `準備できました（${s.hm.label}）`;
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
     console.error(e);
@@ -554,7 +552,7 @@ window.addEventListener('keydown', (e) => {
 
 // ---------- レベル選択 ----------
 
-/** レベル選択画面の地域ボタン。選ぶとその地域で新しいセットを裏で読み込み始める */
+/** レベル選択画面の地域ボタン。選ぶだけで、読み込みはレベルを選んでスタートしたときに行う */
 function renderRegions() {
   const chip = (label: string, onClick: () => void, cls = '') => {
     const b = document.createElement('button');
@@ -564,11 +562,11 @@ function renderRegions() {
     return b;
   };
   ui.startRegions.replaceChildren(
-    ...REGIONS.map((r) => chip(r.name, () => chooseRegion(r.id), r.id === ui.region.value ? 'active' : '')),
+    ...REGIONS.map((r) => chip(r.name, () => chooseRegion(r.id), r.id === selectedRegion ? 'active' : '')),
     chip(
       'おまかせ',
       () => {
-        const others = REGIONS.filter((r) => r.id !== ui.region.value);
+        const others = REGIONS.filter((r) => r.id !== selectedRegion);
         chooseRegion(others[Math.floor(Math.random() * others.length)].id);
       },
       'random',
@@ -577,10 +575,18 @@ function renderRegions() {
 }
 
 function chooseRegion(regionId: string) {
+  selectedRegion = regionId;
   savePref('region', regionId);
-  // 同じ地域をもう一度押したときは、読み込み済みのセットをそのまま使う
-  if (regionId === ui.region.value && set?.spec.regionId === regionId) return;
-  newSet(regionId);
+  // URL のセットコードと違う地域を選んだら、コードは使わない
+  if (pendingSpec && pendingSpec.regionId !== regionId) pendingSpec = null;
+  renderRegions();
+  updateStartStatus();
+}
+
+function updateStartStatus() {
+  ui.startStatus.textContent = pendingSpec
+    ? `セットコード ${formatSetCode(pendingSpec)} の問題で始めます`
+    : 'レベルを選ぶとスタートします（1〜3 キーでも選べます）';
 }
 
 function renderLevels() {
@@ -602,21 +608,30 @@ function renderLevels() {
 
 function openStart() {
   closeMenu();
+  if (set) selectedRegion = set.spec.regionId;
+  updateStartStatus();
   renderRegions();
   renderLevels();
   ui.start.hidden = false;
 }
 
 /** レベルを決めて出題を始める（地形の読み込み中なら、終わり次第始まる） */
+/** レベルを決めてスタートする。ここで初めて地形を読み込む */
 function chooseLevel(l: Level) {
   level = l;
   savePref('level', l.id);
   ui.start.hidden = true;
-  if (!set) {
-    ui.loading.hidden = false;
-    return;
+  mode = 'quiz';
+  if (pendingSpec) {
+    const spec = pendingSpec;
+    pendingSpec = null;
+    loadSet(spec);
+  } else if (set && set.spec.regionId === selectedRegion) {
+    // ゲーム中にレベルだけ変えた場合は、今のセットをそのまま最初から
+    startQuiz();
+  } else {
+    loadSet({ regionId: selectedRegion, seed: newSeed() });
   }
-  startQuiz();
 }
 
 $('change-level').addEventListener('click', openStart);
@@ -640,8 +655,11 @@ function savePref(key: string, value: string) {
 }
 
 applyWidget();
+// 起動時は読み込まず、地域とレベルを選んでもらう。
+// URL の # にセットコードがあればその地域を選んだ状態にし、スタート時にそのコードで読み込む
+pendingSpec = parseSetCode(decodeURIComponent(location.hash.slice(1)));
+selectedRegion = pendingSpec?.regionId ?? findRegion(loadPref('region') ?? '')?.id ?? REGIONS[0].id;
+ui.region.value = selectedRegion;
 renderRegions();
 renderLevels();
-// URL の # にセットコードがあればそれを、なければ新しいセットを読み込む
-// （なければ前回選んだ地域で新しいセット）
-if (!loadFromCode(decodeURIComponent(location.hash.slice(1)))) newSet(findRegion(loadPref('region') ?? '')?.id ?? REGIONS[0].id);
+updateStartStatus();
