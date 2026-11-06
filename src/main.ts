@@ -5,7 +5,7 @@ import { QuizSession } from './game';
 import { findLevel, LEVELS, type Level } from './levels';
 import type { PreparedSet } from './prepare';
 import { newSeed } from './random';
-import { REGIONS } from './regions';
+import { findRegion, REGIONS } from './regions';
 import { formatSetCode, parseSetCode, type SetSpec } from './setCode';
 import { sampleMeshHeight } from './terrain';
 import { TerrainService } from './terrainService';
@@ -51,6 +51,7 @@ const ui = {
   levelName: $('level-name'),
   start: $('start'),
   levels: $('levels'),
+  startRegions: $('start-regions'),
   startStatus: $('start-status'),
   interval: $<HTMLSelectElement>('interval'),
   eyeWrap: $('eye-wrap'),
@@ -74,6 +75,7 @@ let level: Level = findLevel(loadPref('level')) ?? LEVELS[0];
 async function loadSet(spec: SetSpec) {
   const code = formatSetCode(spec);
   ui.region.value = spec.regionId;
+  renderRegions();
   ui.setCode.value = code;
   ui.setCode.classList.remove('invalid');
   history.replaceState(null, '', `#${code}`);
@@ -465,7 +467,10 @@ function loadFromCode(code: string) {
 }
 
 $('new-map').addEventListener('click', () => newSet());
-ui.region.addEventListener('change', () => newSet());
+ui.region.addEventListener('change', () => {
+  savePref('region', ui.region.value);
+  newSet();
+});
 $('load-code').addEventListener('click', () => loadFromCode(ui.setCode.value));
 ui.setCode.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') loadFromCode(ui.setCode.value);
@@ -549,6 +554,35 @@ window.addEventListener('keydown', (e) => {
 
 // ---------- レベル選択 ----------
 
+/** レベル選択画面の地域ボタン。選ぶとその地域で新しいセットを裏で読み込み始める */
+function renderRegions() {
+  const chip = (label: string, onClick: () => void, cls = '') => {
+    const b = document.createElement('button');
+    b.className = `region-chip ${cls}`.trim();
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  ui.startRegions.replaceChildren(
+    ...REGIONS.map((r) => chip(r.name, () => chooseRegion(r.id), r.id === ui.region.value ? 'active' : '')),
+    chip(
+      'おまかせ',
+      () => {
+        const others = REGIONS.filter((r) => r.id !== ui.region.value);
+        chooseRegion(others[Math.floor(Math.random() * others.length)].id);
+      },
+      'random',
+    ),
+  );
+}
+
+function chooseRegion(regionId: string) {
+  savePref('region', regionId);
+  // 同じ地域をもう一度押したときは、読み込み済みのセットをそのまま使う
+  if (regionId === ui.region.value && set?.spec.regionId === regionId) return;
+  newSet(regionId);
+}
+
 function renderLevels() {
   ui.levels.replaceChildren(
     ...LEVELS.map((l, i) => {
@@ -568,6 +602,7 @@ function renderLevels() {
 
 function openStart() {
   closeMenu();
+  renderRegions();
   renderLevels();
   ui.start.hidden = false;
 }
@@ -605,6 +640,8 @@ function savePref(key: string, value: string) {
 }
 
 applyWidget();
+renderRegions();
 renderLevels();
 // URL の # にセットコードがあればそれを、なければ新しいセットを読み込む
-if (!loadFromCode(decodeURIComponent(location.hash.slice(1)))) newSet(REGIONS[0].id);
+// （なければ前回選んだ地域で新しいセット）
+if (!loadFromCode(decodeURIComponent(location.hash.slice(1)))) newSet(findRegion(loadPref('region') ?? '')?.id ?? REGIONS[0].id);

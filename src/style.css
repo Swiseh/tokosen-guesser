@@ -358,7 +358,28 @@ select option { color: #000; }
   text-align: center;
 }
 .start-title { margin: 0; font-size: 32px; letter-spacing: 0.04em; }
-.start-lead { margin: 8px 0 22px; color: var(--panel-muted); }
+.start-lead { margin: 8px 0 14px; color: var(--panel-muted); }
+.start-heading {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--panel-muted);
+  letter-spacing: 0.08em;
+}
+.regions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.region-chip {
+  padding: 5px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.region-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.region-chip.random { border-style: dashed; }
 .levels {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
