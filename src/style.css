@@ -1,12 +1,17 @@
+/* 地形図の紙と等高線の茶色を基調にした配色 */
 :root {
-  --bg: #f3f1ea;
-  --panel: #ffffff;
-  --text: #222;
-  --muted: #666;
-  --accent: #b0703a;
-  --border: #d8d3c4;
+  --ink: #2a2118;
+  --panel-bg: rgba(34, 28, 22, 0.86);
+  --panel-text: #f4ede0;
+  --panel-muted: #c9bda8;
+  --accent: #c8803f;
+  --accent-strong: #e0954d;
+  --paper: #fbf8ef;
+  --line: rgba(255, 255, 255, 0.14);
+  --guess: #1d4ed8;
+  --answer: #d62828;
   font-family: system-ui, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
-  color: var(--text);
+  color: var(--panel-text);
 }
 
 * { box-sizing: border-box; }
@@ -15,151 +20,312 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-}
-
-body {
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+  background: #1b1712;
 }
 
 button, select, input { font: inherit; }
 
 button {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
+  padding: 5px 12px;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--panel);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--panel-text);
   cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: var(--accent); }
+button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
 button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent-strong); }
+button.wide { width: 100%; }
 
-.toolbar, .settings {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 8px 16px;
-}
-.toolbar { border-bottom: 1px solid var(--border); background: var(--panel); }
-.settings { font-size: 13px; color: var(--muted); }
-.settings label { display: flex; align-items: center; gap: 4px; }
-
-h1 { font-size: 18px; margin: 0; }
-.tag {
-  font-size: 11px;
-  font-weight: normal;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 0 4px;
-  vertical-align: middle;
-}
-
-.tabs { display: flex; }
-.tab { border-radius: 0; }
-.tab:first-child { border-radius: 6px 0 0 6px; }
-.tab:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
-.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-.status { font-size: 13px; color: var(--muted); }
-.setcode { display: flex; align-items: center; gap: 4px; font-size: 13px; }
-.setcode input {
-  padding: 3px 6px;
-  border: 1px solid var(--border);
+select, input[type='text'] {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--panel-text);
 }
-.setcode input.invalid { border-color: #d62828; }
-.place { margin-left: auto; }
-.place a { color: var(--accent); }
-
-.main {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: 12px;
-  padding: 0 16px 8px;
-}
+select option { color: #000; }
 
 .panel {
-  position: relative;
-  min-height: 0;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
 }
 
-.map {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.map-canvas { display: block; cursor: crosshair; }
-
-.view { width: 100%; height: 100%; }
+/* ---------- 3Dビュー ---------- */
+.view { position: fixed; inset: 0; }
 .view canvas { display: block; cursor: grab; touch-action: none; }
 .view canvas:active { cursor: grabbing; }
 
+/* ---------- 上部中央 HUD ---------- */
 .hud {
-  position: absolute;
-  top: 10px;
+  position: fixed;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
   pointer-events: none;
+  z-index: 5;
 }
-
 .hud-item {
-  padding: 2px 12px;
+  padding: 3px 14px;
   white-space: nowrap;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   color: #fff;
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
-.quiz {
-  position: absolute;
+/* ---------- 左上 ---------- */
+.topbar {
+  position: fixed;
+  top: 12px;
   left: 12px;
-  bottom: 12px;
-  max-width: calc(100% - 24px);
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 20;
 }
-.quiz-title { font-weight: bold; }
-.quiz-msg { font-size: 14px; margin: 4px 0 8px; white-space: pre-line; }
-.quiz-actions { display: flex; gap: 8px; }
+.brand {
+  font-weight: 700;
+  font-size: 17px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--panel-bg);
+  border-radius: 8px;
+}
 
-.loading {
+.menu {
+  position: fixed;
+  top: 56px;
+  left: 12px;
+  width: 300px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  padding: 4px 14px 12px;
+  z-index: 20;
+  font-size: 14px;
+}
+.menu h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--panel-muted);
+  margin: 12px 0 6px;
+  letter-spacing: 0.05em;
+}
+.menu section + section { border-top: 1px solid var(--line); }
+.menu .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin: 6px 0; }
+.menu .row input[type='range'] { width: 100%; accent-color: var(--accent); }
+.menu .row input[type='text'] { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; }
+.menu .row input.invalid { border-color: var(--answer); }
+.menu .check { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+.menu .check input { accent-color: var(--accent); }
+.row-buttons { display: flex; gap: 8px; }
+.row-buttons button { flex: 1; }
+.tabs { display: flex; }
+.tab { flex: 1; border-radius: 0; }
+.tab:first-child { border-radius: 6px 0 0 6px; }
+.tab:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.place { font-size: 12px; color: var(--panel-muted); margin: 8px 0 0; }
+.place:empty { display: none; }
+.place a { color: var(--accent-strong); }
+
+/* ---------- 右上：スコアボード ---------- */
+.scoreboard {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: stretch;
+  gap: 6px 10px;
+  padding: 8px 12px 10px;
+  z-index: 5;
+}
+.sb-title { grid-column: 1 / -1; text-align: center; font-weight: 700; font-size: 14px; }
+.sb-rounds { display: flex; gap: 4px; }
+.sb-round {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  font-variant-numeric: tabular-nums;
+}
+.sb-round .n { font-size: 11px; color: var(--panel-muted); }
+.sb-round .s { font-size: 13px; font-weight: 600; min-height: 1.2em; }
+.sb-round.current { background: rgba(200, 128, 63, 0.35); outline: 1px solid var(--accent); }
+.sb-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.sb-total span { font-size: 11px; color: var(--panel-muted); }
+.sb-total b { font-size: 18px; }
+
+/* ---------- 地図ウィンドウ ---------- */
+.map-widget {
+  position: fixed;
+  bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  z-index: 10;
+  opacity: 0.8;
+  transition: width 0.15s ease, opacity 0.15s ease;
+}
+.map-widget.side-left { left: 12px; }
+.map-widget.side-right { right: 12px; }
+.map-widget .map-frame { position: relative; height: 200px; transition: height 0.15s ease; }
+
+.map-widget.open { opacity: 1; }
+.map-widget.open.size-1 { width: min(440px, calc(100vw - 24px)); }
+.map-widget.open.size-1 .map-frame { height: min(320px, calc(100vh - 160px)); }
+.map-widget.open.size-2 { width: min(640px, calc(100vw - 24px)); }
+.map-widget.open.size-2 .map-frame { height: min(460px, calc(100vh - 160px)); }
+.map-widget.open.size-3 { width: min(880px, calc(100vw - 24px)); }
+.map-widget.open.size-3 .map-frame { height: min(640px, calc(100vh - 160px)); }
+
+/* 答え合わせ中は画面中央に大きく出す（大きさの設定より優先するため :is() で詳細度を上げる） */
+.map-widget.result:is(.size-1, .size-2, .size-3) {
+  left: 50%;
+  right: auto;
+  bottom: 175px;
+  transform: translateX(-50%);
+  width: min(1000px, calc(100vw - 24px));
+  opacity: 1;
+}
+.map-widget.result:is(.size-1, .size-2, .size-3) .map-frame { height: calc(100vh - 285px); }
+.map-widget.result .map-tools, .map-widget.result .guess-btn { display: none; }
+
+.map-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  visibility: hidden;
+}
+.map-widget.open .map-tools { visibility: visible; }
+.tool {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  background: var(--panel-bg);
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1;
+}
+.tool.active { background: var(--accent); border-color: var(--accent); }
+.map-status {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--panel-bg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.map-status:empty { display: none; }
+
+.map {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.map-canvas { display: block; cursor: crosshair; touch-action: none; }
+.map-canvas.dragging { cursor: grabbing; }
+
+.map-zoom {
   position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  visibility: hidden;
+}
+.map-widget.open .map-zoom { visibility: visible; }
+
+.guess-btn {
+  padding: 9px;
+  border-radius: 8px;
+  background: var(--panel-bg);
+  font-weight: 600;
+}
+.guess-btn:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+.guess-btn:not(:disabled):hover { background: var(--accent-strong); }
+
+/* ---------- 答え合わせ・結果 ---------- */
+.result {
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  padding: 12px 18px 14px;
+  z-index: 15;
+  text-align: center;
+}
+.result-title { font-size: 18px; font-weight: 700; }
+.result-msg { font-size: 14px; color: var(--panel-muted); margin: 4px 0 8px; white-space: pre-line; font-variant-numeric: tabular-nums; }
+.result-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; margin: 0 0 10px; }
+.result-bar div { height: 100%; width: 0; background: var(--accent-strong); transition: width 0.4s ease; }
+.result-actions { display: flex; justify-content: center; gap: 8px; }
+.result .place { text-align: center; }
+
+/* ---------- その他 ---------- */
+.loading {
+  position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(243, 241, 234, 0.85);
+  background: rgba(27, 23, 18, 0.8);
   font-size: 15px;
+  z-index: 50;
 }
 
-.footer {
-  padding: 4px 16px 8px;
-  font-size: 12px;
-  color: var(--muted);
+.attribution {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  z-index: 4;
 }
-.footer a { color: var(--muted); }
+.attribution a { color: inherit; }
 
-@media (max-width: 800px) {
-  .main {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(300px, 1fr) minmax(300px, 1fr);
-  }
+@media (max-width: 700px) {
+  .brand { display: none; }
+  .scoreboard { grid-template-columns: 1fr; }
+  .sb-round { width: 40px; }
+  .sb-total { border-left: none; padding-left: 0; flex-direction: row; gap: 6px; }
+  .map-widget { width: calc(100vw - 24px); }
+  .map-widget.side-left, .map-widget.side-right { left: 12px; right: 12px; }
 }

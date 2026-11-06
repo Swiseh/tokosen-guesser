@@ -3,69 +3,124 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>等高線Guessr（試作）</title>
+    <title>等高線Guessr</title>
   </head>
   <body>
-    <header class="toolbar">
-      <h1>等高線Guessr <span class="tag">試作</span></h1>
-      <label>山域
-        <select id="region"></select>
-      </label>
-      <button id="new-map">新しい地図</button>
-      <label class="setcode">セットコード
-        <input id="setcode" type="text" size="20" spellcheck="false" autocomplete="off" />
-      </label>
-      <button id="load-code">読み込む</button>
-      <button id="copy-code">コピー</button>
-      <div class="tabs" role="tablist">
-        <button id="mode-free" class="tab active" role="tab">自由に見る</button>
-        <button id="mode-quiz" class="tab" role="tab">5問に挑戦</button>
-      </div>
-      <span id="status" class="status"></span>
-    </header>
+    <!-- 3Dビュー（画面全体） -->
+    <div id="view" class="view"></div>
 
-    <div class="settings">
-      <label>等高線間隔
-        <select id="interval">
-          <option value="10" selected>10 m</option>
-          <option value="20">20 m</option>
-          <option value="50">50 m</option>
-        </select>
-      </label>
-      <label><input type="checkbox" id="labels" checked /> 標高の数字</label>
-      <label><input type="checkbox" id="compass" checked /> コンパス</label>
-      <label><input type="checkbox" id="altimeter" checked /> 標高計</label>
-      <label>視程 <input type="range" id="visibility" min="2" max="30" step="1" value="8" /> <span id="visibility-val">8 km</span></label>
-      <label id="eye-wrap">目線の高さ <input type="range" id="eye" min="0" max="300" step="1" value="0" /> <span id="eye-val">1.7 m</span></label>
-      <span id="place" class="place"></span>
+    <!-- 上部中央：コンパス・標高計 -->
+    <div class="hud">
+      <div id="hud-compass" class="hud-item"></div>
+      <div id="hud-altimeter" class="hud-item"></div>
     </div>
 
-    <main class="main">
-      <section class="panel map-panel">
-        <div id="map" class="map"></div>
-      </section>
-      <section class="panel view-panel">
-        <div id="view" class="view"></div>
-        <div class="hud">
-          <div id="hud-compass" class="hud-item"></div>
-          <div id="hud-altimeter" class="hud-item"></div>
-        </div>
-        <div id="quiz" class="quiz" hidden>
-          <div id="quiz-title" class="quiz-title"></div>
-          <div id="quiz-msg" class="quiz-msg"></div>
-          <div class="quiz-actions">
-            <button id="quiz-submit" disabled>この地点で決定</button>
-            <button id="quiz-next" hidden>次へ</button>
-            <button id="quiz-retry" hidden>同じ問題をもう一度</button>
-            <button id="quiz-newset" hidden>新しいセット</button>
-          </div>
-        </div>
-        <div id="loading" class="loading" hidden></div>
-      </section>
-    </main>
+    <!-- 左上：タイトルとメニュー -->
+    <div class="topbar">
+      <button id="menu-btn" class="icon-btn" title="メニュー" aria-expanded="false" aria-controls="menu">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      </button>
+      <span class="brand">等高線Guessr</span>
+    </div>
 
-    <footer class="footer">
-      出典：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院 地理院タイル</a>（標高タイル（基盤地図情報数値標高モデル））を加工して作成
+    <div id="menu" class="menu panel" hidden>
+      <section>
+        <h2>セット</h2>
+        <label class="row">山域
+          <select id="region"></select>
+        </label>
+        <button id="new-map" class="primary wide">新しいセットを始める</button>
+        <label class="row">セットコード
+          <input id="setcode" type="text" spellcheck="false" autocomplete="off" />
+        </label>
+        <div class="row-buttons">
+          <button id="load-code">読み込む</button>
+          <button id="copy-code">コピー</button>
+        </div>
+      </section>
+      <section>
+        <h2>モード</h2>
+        <div class="tabs" role="tablist">
+          <button id="mode-quiz" class="tab" role="tab">5問に挑戦</button>
+          <button id="mode-free" class="tab" role="tab">探索モード</button>
+        </div>
+        <p id="place" class="place"></p>
+      </section>
+      <section>
+        <h2>ヒント・表示</h2>
+        <label class="row">等高線の間隔
+          <select id="interval">
+            <option value="10" selected>10 m</option>
+            <option value="20">20 m</option>
+            <option value="50">50 m</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="labels" checked /> 等高線に標高の数字</label>
+        <label class="check"><input type="checkbox" id="compass" checked /> コンパス</label>
+        <label class="check"><input type="checkbox" id="altimeter" checked /> 標高計</label>
+        <label class="row">視程 <span id="visibility-val">8 km</span>
+          <input type="range" id="visibility" min="2" max="30" step="1" value="8" />
+        </label>
+        <label id="eye-wrap" class="row">目線の高さ <span id="eye-val">1.7 m</span>
+          <input type="range" id="eye" min="0" max="300" step="1" value="0" />
+        </label>
+      </section>
+    </div>
+
+    <!-- 右上：スコアボード -->
+    <div id="scoreboard" class="scoreboard panel">
+      <div id="sb-title" class="sb-title"></div>
+      <div id="sb-rounds" class="sb-rounds"></div>
+      <div id="sb-total-wrap" class="sb-total"><span>合計</span><b id="sb-total">0</b></div>
+    </div>
+
+    <!-- 等高線地図（小ウィンドウ） -->
+    <div id="map-widget" class="map-widget side-left size-1">
+      <div class="map-tools">
+        <button id="map-grow" class="tool" title="地図を大きく">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" /></svg>
+        </button>
+        <button id="map-shrink" class="tool" title="地図を小さく">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M20 10h-6V4M14 10l7-7M4 14h6v6M10 14l-7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" /></svg>
+        </button>
+        <button id="map-pin" class="tool" title="大きいまま固定">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M9 4h6l-1 5 3 3H7l3-3zM12 12v8" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round" /></svg>
+        </button>
+        <button id="map-side" class="tool" title="左右を入れ替え">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M7 7h13M16 3l4 4-4 4M17 17H4M8 13l-4 4 4 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </button>
+        <span id="map-status" class="map-status"></span>
+      </div>
+      <div class="map-frame">
+        <div id="map" class="map"></div>
+        <div class="map-zoom">
+          <button id="zoom-in" class="tool" title="拡大">＋</button>
+          <button id="zoom-out" class="tool" title="縮小">－</button>
+          <button id="zoom-reset" class="tool" title="全体を表示">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+      </div>
+      <button id="guess-btn" class="guess-btn" disabled>地図をクリックして地点を選ぶ</button>
+    </div>
+
+    <!-- 答え合わせ・結果 -->
+    <div id="result" class="result panel" hidden>
+      <div id="result-title" class="result-title"></div>
+      <div id="result-msg" class="result-msg"></div>
+      <div id="result-bar" class="result-bar"><div></div></div>
+      <div class="result-actions">
+        <button id="quiz-next" class="primary">次へ</button>
+        <button id="quiz-retry">同じ問題をもう一度</button>
+        <button id="quiz-newset" class="primary">新しいセット</button>
+      </div>
+      <p id="result-place" class="place"></p>
+    </div>
+
+    <div id="loading" class="loading" hidden></div>
+
+    <footer class="attribution">
+      出典：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院 地理院タイル</a>（標高タイル）を加工して作成
     </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>

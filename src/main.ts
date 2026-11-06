@@ -21,17 +21,27 @@ const QUESTIONS = 5;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const ui = {
+  menuBtn: $<HTMLButtonElement>('menu-btn'),
+  menu: $('menu'),
   region: $<HTMLSelectElement>('region'),
   setCode: $<HTMLInputElement>('setcode'),
-  status: $('status'),
   place: $('place'),
   loading: $('loading'),
   hudCompass: $('hud-compass'),
   hudAltimeter: $('hud-altimeter'),
-  quiz: $('quiz'),
-  quizTitle: $('quiz-title'),
-  quizMsg: $('quiz-msg'),
-  quizSubmit: $<HTMLButtonElement>('quiz-submit'),
+  sbTitle: $('sb-title'),
+  sbRounds: $('sb-rounds'),
+  sbTotalWrap: $('sb-total-wrap'),
+  sbTotal: $('sb-total'),
+  widget: $('map-widget'),
+  mapStatus: $('map-status'),
+  mapPin: $<HTMLButtonElement>('map-pin'),
+  guessBtn: $<HTMLButtonElement>('guess-btn'),
+  result: $('result'),
+  resultTitle: $('result-title'),
+  resultMsg: $('result-msg'),
+  resultBar: $('result-bar').firstElementChild as HTMLElement,
+  resultPlace: $('result-place'),
   quizNext: $<HTMLButtonElement>('quiz-next'),
   quizRetry: $<HTMLButtonElement>('quiz-retry'),
   quizNewSet: $<HTMLButtonElement>('quiz-newset'),
@@ -48,7 +58,7 @@ const map = new ContourMap($('map'));
 const viewer = new Viewer3D($('view'));
 
 type Mode = 'free' | 'quiz';
-let mode: Mode = 'free';
+let mode: Mode = 'quiz';
 let set: PreparedSet | null = null;
 let session: QuizSession | null = null;
 
@@ -83,6 +93,7 @@ async function loadSet(spec: SetSpec) {
 }
 
 function newSet(regionId = ui.region.value) {
+  closeMenu();
   loadSet({ regionId, seed: newSeed() });
 }
 
@@ -98,13 +109,17 @@ async function refreshContours() {
   if (set === target && interval === currentInterval()) map.setContours(c);
 }
 
-function updatePlace(show: boolean) {
+function placeHtml(separator = '<br>') {
   const c = set?.hm.center;
-  if (!set || !c || !show) {
-    ui.place.textContent = '';
-    return;
-  }
-  ui.place.innerHTML = `${set.hm.label}　${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}　<a href="https://maps.gsi.go.jp/#14/${c.lat.toFixed(5)}/${c.lon.toFixed(5)}/" target="_blank" rel="noopener">地理院地図で見る</a>`;
+  if (!set || !c) return '';
+  return `${set.hm.label}　${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}${separator}<a href="https://maps.gsi.go.jp/#14/${c.lat.toFixed(5)}/${c.lon.toFixed(5)}/" target="_blank" rel="noopener">地理院地図で見る</a>`;
+}
+
+/** 場所の情報は、答えが分かってしまうので出題中は出さない */
+function updatePlace() {
+  const show = mode === 'free' || session?.phase === 'finished';
+  ui.place.innerHTML = show ? placeHtml() : '';
+  ui.resultPlace.innerHTML = session?.phase === 'finished' ? placeHtml('　') : '';
 }
 
 // ---------- 自由モード ----------
@@ -112,14 +127,14 @@ function updatePlace(show: boolean) {
 function enterFree() {
   mode = 'free';
   session = null;
-  ui.quiz.hidden = true;
   ui.eyeWrap.hidden = false;
-  setTab();
-  if (!set) return;
-  const q = set.questions[0];
-  viewer.setViewpoint(q.col, q.row, q.yaw);
-  updatePlace(true);
-  updateOverlay();
+  setResultMode(false);
+  ui.result.hidden = true;
+  if (set) {
+    const q = set.questions[0];
+    viewer.setViewpoint(q.col, q.row, q.yaw);
+  }
+  refreshAll();
 }
 
 // ---------- 出題モード ----------
@@ -128,10 +143,10 @@ function startQuiz() {
   mode = 'quiz';
   ui.eyeWrap.hidden = true;
   viewer.setSettings({ eyeHeight: 1.7 });
-  setTab();
+  (document.getElementById('eye') as HTMLInputElement).value = '0';
+  $('eye-val').textContent = '1.7 m';
   if (!set) return;
   session = new QuizSession(set.questions, set.hm.metersPerPixel, MAP_SIZE_M);
-  updatePlace(false);
   showQuestion();
 }
 
@@ -139,12 +154,10 @@ function showQuestion() {
   if (!session) return;
   const q = session.current;
   viewer.setViewpoint(q.col, q.row, q.yaw);
-  ui.quiz.hidden = false;
-  ui.quizTitle.textContent = `第 ${session.index + 1} 問 / ${session.questions.length}`;
-  ui.quizMsg.textContent = '3Dビューをドラッグして見回し、地図上で現在地をクリックしてください';
-  setButtons({ submit: true });
-  ui.quizSubmit.disabled = true;
-  updateOverlay();
+  ui.result.hidden = true;
+  setResultMode(false);
+  map.resetView();
+  refreshAll();
 }
 
 function submitGuess() {
@@ -153,10 +166,15 @@ function submitGuess() {
   if (!a) return;
   const q = session.current;
   const elev = Math.round(sampleMeshHeight(set.hm, q.col, q.row));
-  ui.quizMsg.textContent = `誤差 ${formatDist(a.distance)}　→　${a.score} 点\n正解地点の標高 ${elev} m`;
-  setButtons({ next: true });
+  ui.resultTitle.textContent = `${a.score.toLocaleString()} 点`;
+  ui.resultMsg.textContent = `誤差 ${formatDist(a.distance)}　・　正解地点の標高 ${elev} m`;
+  ui.resultBar.style.width = `${(a.score / 5000) * 100}%`;
+  showResultButtons({ next: true });
   ui.quizNext.textContent = session.isLast ? '結果を見る' : '次の問題へ';
-  updateOverlay();
+  ui.result.hidden = false;
+  setResultMode(true);
+  map.fitTo([a.guess, q]);
+  refreshAll();
 }
 
 function nextQuestion() {
@@ -166,15 +184,18 @@ function nextQuestion() {
     showQuestion();
     return;
   }
-  ui.quizTitle.textContent = `結果：${session.totalScore} / ${session.maxScore} 点`;
-  ui.quizMsg.textContent = session.answers.map((a, i) => `第${i + 1}問　${formatDist(a.distance)}　${a.score} 点`).join('\n');
-  setButtons({ retry: true, newSet: true });
-  updatePlace(true);
-  updateOverlay();
+  ui.resultTitle.textContent = `合計 ${session.totalScore.toLocaleString()} / ${session.maxScore.toLocaleString()} 点`;
+  // 各問の点数は右上のスコアボードに出ているので、ここは要約だけ
+  const avg = session.answers.reduce((s, a) => s + a.distance, 0) / session.answers.length;
+  const best = Math.max(...session.answers.map((a) => a.score));
+  ui.resultMsg.textContent = `平均誤差 ${formatDist(avg)}　・　最高 ${best} 点`;
+  ui.resultBar.style.width = `${(session.totalScore / session.maxScore) * 100}%`;
+  showResultButtons({ retry: true, newSet: true });
+  map.fitTo(session.questions.flatMap((q, i) => [q, session!.answers[i].guess]));
+  refreshAll();
 }
 
-function setButtons(show: { submit?: boolean; next?: boolean; retry?: boolean; newSet?: boolean }) {
-  ui.quizSubmit.hidden = !show.submit;
+function showResultButtons(show: { next?: boolean; retry?: boolean; newSet?: boolean }) {
   ui.quizNext.hidden = !show.next;
   ui.quizRetry.hidden = !show.retry;
   ui.quizNewSet.hidden = !show.newSet;
@@ -184,7 +205,16 @@ function formatDist(m: number) {
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
 }
 
-// ---------- 地図の重ね描き・HUD ----------
+// ---------- 表示の更新 ----------
+
+function refreshAll() {
+  updateOverlay();
+  updateScoreboard();
+  updateGuessButton();
+  updatePlace();
+  $('mode-free').classList.toggle('active', mode === 'free');
+  $('mode-quiz').classList.toggle('active', mode === 'quiz');
+}
 
 function updateOverlay() {
   const markers: Marker[] = [];
@@ -239,10 +269,131 @@ function updateHud(view: { col: number; row: number; yaw: number }) {
   }
 }
 
-function setTab() {
-  $('mode-free').classList.toggle('active', mode === 'free');
-  $('mode-quiz').classList.toggle('active', mode === 'quiz');
+function updateScoreboard() {
+  ui.sbTitle.textContent = set ? (mode === 'free' ? `${set.hm.label}（探索）` : set.hm.label) : '';
+  const quiz = mode === 'quiz' && session;
+  ui.sbRounds.hidden = ui.sbTotalWrap.hidden = !quiz;
+  if (!quiz) return;
+  const s = session!;
+  ui.sbRounds.replaceChildren(
+    ...s.questions.map((_, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'sb-round';
+      if (i === s.index && s.phase !== 'finished') cell.classList.add('current');
+      const n = document.createElement('span');
+      n.className = 'n';
+      n.textContent = String(i + 1);
+      const sc = document.createElement('span');
+      sc.className = 's';
+      sc.textContent = s.answers[i] ? String(s.answers[i].score) : '';
+      cell.append(n, sc);
+      return cell;
+    }),
+  );
+  ui.sbTotal.textContent = s.totalScore.toLocaleString();
 }
+
+function updateGuessButton() {
+  const guessing = mode === 'quiz' && session?.phase === 'guessing';
+  ui.guessBtn.hidden = !guessing;
+  if (!guessing) return;
+  ui.guessBtn.disabled = !session!.guess;
+  ui.guessBtn.textContent = session!.guess ? 'この地点で決定（Space）' : '地図をクリックして地点を選ぶ';
+}
+
+// ---------- 地図ウィンドウ ----------
+
+/** 地図ウィンドウの見た目の設定（閲覧者ごとの好みとして保存） */
+const widgetPrefs = loadWidgetPrefs();
+let widgetHover = false;
+let widgetLeaveTimer = 0;
+
+function loadWidgetPrefs(): { size: number; pinned: boolean; side: 'left' | 'right' } {
+  const fallback = { size: 1, pinned: false, side: 'left' as const };
+  try {
+    const raw = localStorage.getItem('mapWidget');
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveWidgetPrefs() {
+  try {
+    localStorage.setItem('mapWidget', JSON.stringify(widgetPrefs));
+  } catch {
+    // 保存できない環境（プライベートモードなど）では何もしない
+  }
+}
+
+function applyWidget() {
+  const w = ui.widget;
+  w.classList.remove('size-1', 'size-2', 'size-3', 'side-left', 'side-right');
+  w.classList.add(`size-${widgetPrefs.size}`, `side-${widgetPrefs.side}`);
+  w.classList.toggle('open', widgetHover || widgetPrefs.pinned);
+  ui.mapPin.classList.toggle('active', widgetPrefs.pinned);
+}
+
+function setResultMode(on: boolean) {
+  ui.widget.classList.toggle('result', on);
+}
+
+ui.widget.addEventListener('mouseenter', () => {
+  clearTimeout(widgetLeaveTimer);
+  widgetHover = true;
+  applyWidget();
+});
+ui.widget.addEventListener('mouseleave', () => {
+  clearTimeout(widgetLeaveTimer);
+  widgetLeaveTimer = window.setTimeout(function close() {
+    // 地図をドラッグしたまま外に出た場合は、離すまで閉じない
+    if (map.isDragging) {
+      widgetLeaveTimer = window.setTimeout(close, 200);
+      return;
+    }
+    widgetHover = false;
+    applyWidget();
+  }, 400);
+});
+$('map-grow').addEventListener('click', () => {
+  widgetPrefs.size = Math.min(3, widgetPrefs.size + 1);
+  saveWidgetPrefs();
+  applyWidget();
+});
+$('map-shrink').addEventListener('click', () => {
+  widgetPrefs.size = Math.max(1, widgetPrefs.size - 1);
+  saveWidgetPrefs();
+  applyWidget();
+});
+ui.mapPin.addEventListener('click', () => {
+  widgetPrefs.pinned = !widgetPrefs.pinned;
+  saveWidgetPrefs();
+  applyWidget();
+});
+$('map-side').addEventListener('click', () => {
+  widgetPrefs.side = widgetPrefs.side === 'left' ? 'right' : 'left';
+  saveWidgetPrefs();
+  applyWidget();
+});
+$('zoom-in').addEventListener('click', () => map.zoomBy(1.6));
+$('zoom-out').addEventListener('click', () => map.zoomBy(1 / 1.6));
+$('zoom-reset').addEventListener('click', () => map.resetView());
+
+// ---------- メニュー ----------
+
+function openMenu() {
+  ui.menu.hidden = false;
+  ui.menuBtn.setAttribute('aria-expanded', 'true');
+}
+function closeMenu() {
+  ui.menu.hidden = true;
+  ui.menuBtn.setAttribute('aria-expanded', 'false');
+}
+ui.menuBtn.addEventListener('click', () => (ui.menu.hidden ? openMenu() : closeMenu()));
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target as Node;
+  if (!ui.menu.hidden && !ui.menu.contains(t) && !ui.menuBtn.contains(t)) closeMenu();
+});
 
 // ---------- イベント ----------
 
@@ -252,13 +403,13 @@ map.onClick = (col, row) => {
   if (mode === 'free') {
     viewer.setViewpoint(col, row);
   } else if (session?.setGuess(col, row)) {
-    ui.quizSubmit.disabled = false;
     updateOverlay();
+    updateGuessButton();
   }
 };
 
 map.onHover = (_c, _r, elev) => {
-  ui.status.textContent = mode === 'free' ? `カーソル位置の標高 ${Math.round(elev)} m` : '';
+  ui.mapStatus.textContent = mode === 'free' ? `標高 ${Math.round(elev)} m` : '';
 };
 
 function loadFromCode(code: string) {
@@ -267,6 +418,7 @@ function loadFromCode(code: string) {
     ui.setCode.classList.add('invalid');
     return false;
   }
+  closeMenu();
   loadSet(spec);
   return true;
 }
@@ -287,9 +439,15 @@ window.addEventListener('hashchange', () => {
   loadFromCode(code);
 });
 
-$('mode-free').addEventListener('click', enterFree);
-$('mode-quiz').addEventListener('click', startQuiz);
-ui.quizSubmit.addEventListener('click', submitGuess);
+$('mode-free').addEventListener('click', () => {
+  enterFree();
+  closeMenu();
+});
+$('mode-quiz').addEventListener('click', () => {
+  startQuiz();
+  closeMenu();
+});
+ui.guessBtn.addEventListener('click', submitGuess);
 ui.quizNext.addEventListener('click', nextQuestion);
 ui.quizRetry.addEventListener('click', startQuiz);
 ui.quizNewSet.addEventListener('click', () => newSet());
@@ -310,5 +468,25 @@ $<HTMLInputElement>('eye').addEventListener('input', (e) => {
   viewer.setSettings({ eyeHeight: h });
 });
 
+// キーボード：Space / Enter で決定・次へ、Esc でメニューを閉じる
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeMenu();
+    return;
+  }
+  const tag = (e.target as HTMLElement).tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.key !== ' ' && e.key !== 'Enter') return;
+  if (!session || mode !== 'quiz') return;
+  if (session.phase === 'guessing' && session.guess) {
+    e.preventDefault();
+    submitGuess();
+  } else if (session.phase === 'revealed') {
+    e.preventDefault();
+    nextQuestion();
+  }
+});
+
+applyWidget();
 // URL の # にセットコードがあればそれを、なければ新しいセットを読み込む
 if (!loadFromCode(decodeURIComponent(location.hash.slice(1)))) newSet(REGIONS[0].id);
